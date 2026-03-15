@@ -217,10 +217,12 @@ async def chat(
         reasoning_id = reasoning_cls.get_info()["id"]
 
         # Get all retrievers from all indices (search all indexed docs)
+        # selected format: [mode, selected_ids, user_id]
+        #   mode="all" searches all files, user_id=1 is the admin user
         retrievers = []
         for index in _ktem_app.index_manager.indices:
             iretrievers = index.get_retriever_pipelines(
-                settings, "default", selected=[]
+                settings, 1, selected=["all", [], 1]
             )
             retrievers += iretrievers
 
