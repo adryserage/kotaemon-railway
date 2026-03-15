@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Set defaults
+# Set defaults — PORT is injected by Railway
 GRADIO_SERVER_NAME="${GRADIO_SERVER_NAME:-0.0.0.0}"
-GRADIO_SERVER_PORT="${GRADIO_SERVER_PORT:-7860}"
+GRADIO_SERVER_PORT="${PORT:-${GRADIO_SERVER_PORT:-7860}}"
 
 export GRADIO_SERVER_NAME
 export GRADIO_SERVER_PORT
