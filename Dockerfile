@@ -1,14 +1,9 @@
 FROM ghcr.io/cinnamon/kotaemon:main-full
 
-# Upgrade Google AI packages (support gemini-embedding-2-preview etc.)
-# Pins respect: langchain-google-genai 1.x needs google-generativeai <0.8,
-# gradio-client needs websockets <12, opentelemetry needs protobuf <5.
-RUN pip install --no-cache-dir --upgrade \
-    "langchain-google-genai>=1.0.10,<2.0.0" \
-    "google-generativeai>=0.7.0,<0.8.0" \
-    "google-ai-generativelanguage>=0.6.10,<0.7.0" \
-    "google-api-core>=2.24,<3.0" \
-    "protobuf>=4.21,<5.0"
+# Bump google-api-core for latest API support (gemini-embedding-2-preview etc.)
+# Other Google packages (generativeai, ai-generativelanguage, langchain-google-genai)
+# are tightly cross-pinned in the base image and cannot be upgraded individually.
+RUN pip install --no-cache-dir --upgrade "google-api-core>=2.24,<3.0"
 
 # Override launch.sh to skip Ollama (not needed — we use external LLM APIs)
 COPY launch.sh /app/launch.sh
