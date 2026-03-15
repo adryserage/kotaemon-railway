@@ -6,9 +6,10 @@ Uses gr.mount_gradio_app() — the official Gradio 4.x pattern for
 combining FastAPI routes with a Gradio UI.
 
 Endpoints added:
-- POST /api/ingest  — accept ZIP of markdown files
-- POST /api/chat    — query the RAG pipeline
-- GET  /api/health  — health check
+- POST /api/ingest        — accept markdown files as JSON and index
+- POST /api/ingest/upload — accept ZIP file upload and index
+- POST /api/chat          — query the RAG pipeline
+- GET  /api/health        — health check
 """
 
 import logging
@@ -58,7 +59,7 @@ gr.mount_gradio_app(
     ],
 )
 
-print("API endpoints mounted: /api/ingest, /api/chat, /api/health")
+print("API endpoints mounted: /api/ingest, /api/ingest/upload, /api/chat, /api/health")
 
 # Run with uvicorn
 host = os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0")

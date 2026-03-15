@@ -1,6 +1,7 @@
 """
 REST API endpoints for devis-preprocessor integration.
-- /api/ingest: Accept ZIP of markdown files for indexing
+- /api/ingest: Accept markdown files (JSON) and index into vector store
+- /api/ingest/upload: Accept ZIP file upload and index into vector store
 - /api/chat: Query the RAG pipeline and return answers
 - /api/health: Health check
 """
@@ -26,20 +27,13 @@ UPLOAD_DIR = Path(
     os.environ.get("KH_UPLOAD_DIR", "/app/ktem_app_data/user_data/files")
 )
 
-# Maximum total size of extracted ZIP contents (100 MB)
+MAX_MESSAGE_LENGTH = 10_000
+MAX_HISTORY_TURNS = 50
+MAX_INGEST_FILES = 200
+MAX_FILE_CONTENT = 500_000
 MAX_EXTRACT_SIZE = 100 * 1024 * 1024
-
-# Maximum size of the uploaded compressed ZIP file (150 MB)
 MAX_UPLOAD_SIZE = 150 * 1024 * 1024
 
-# Maximum length of a single chat message / question (characters)
-MAX_MESSAGE_LENGTH = 10_000
-
-# Maximum number of history turns accepted in a chat request
-MAX_HISTORY_TURNS = 50
-
-# Optional API key for protecting ingest and chat endpoints.
-# Set API_SECRET_KEY env var to enable authentication.
 _API_SECRET_KEY = os.environ.get("API_SECRET_KEY")
 
 # Will be set by app_with_api.py after the App is created
@@ -59,49 +53,140 @@ async def _verify_api_key(x_api_key: Optional[str] = Header(None)):
             raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-def _safe_doc_name(filename: str) -> str:
-    """Return a filesystem-safe directory name derived from *filename*.
-
-    Strips directory components, removes the expected ZIP suffixes, then
-    replaces any character that is not alphanumeric, dash, underscore, or dot
-    with an underscore.  Raises ValueError if the result is empty.
-    """
-    # Keep only the final component to prevent path traversal.
-    base = Path(filename).name
-    base = base.replace("_sections.zip", "").replace(".zip", "")
+def _safe_name(name: str) -> str:
+    """Return a filesystem-safe name. Raises ValueError if result is empty."""
+    base = Path(name).name
     sanitized = re.sub(r"[^\w\-.]", "_", base).strip(".")
     if not sanitized or sanitized == "..":
-        raise ValueError(f"Cannot derive a safe directory name from: {filename!r}")
+        raise ValueError(f"Cannot derive a safe name from: {name!r}")
     return sanitized
 
 
-# --- Ingest endpoint ---
+def _index_files(file_paths: list[str]) -> dict:
+    """Run file paths through kotaemon's indexing pipeline. Returns result dict."""
+    indexed_count = 0
+    index_errors = []
+
+    if not _ktem_app or not file_paths:
+        return {"indexed": 0, "index_errors": ["App not ready or no files"]}
+
+    try:
+        index = _ktem_app.index_manager.indices[0]
+        settings = _ktem_app.default_settings.flatten()
+        indexing_pipeline = index.get_indexing_pipeline(settings, user_id=1)
+
+        for response in indexing_pipeline.stream(file_paths, reindex=False):
+            if hasattr(response, "content") and isinstance(response.content, dict):
+                status = response.content.get("status")
+                fname = response.content.get("file_name", "")
+                if status == "success":
+                    indexed_count += 1
+                elif status == "failed":
+                    msg = response.content.get("message", "unknown")
+                    index_errors.append(f"{fname}: {msg}")
+                    logger.warning("Index failed for %s: %s", fname, msg)
+    except Exception:
+        logger.exception("Error during indexing pipeline")
+        index_errors.append("Indexing pipeline error (see server logs)")
+
+    return {"indexed": indexed_count, "index_errors": index_errors}
+
+
+# --- Ingest endpoint (JSON — direct markdown files) ---
+
+
+class IngestFile(BaseModel):
+    name: str = Field(..., max_length=255)
+    content: str = Field(..., max_length=MAX_FILE_CONTENT)
+
+
+class IngestRequest(BaseModel):
+    doc_name: str = Field(..., max_length=255)
+    files: list[IngestFile] = Field(..., max_length=MAX_INGEST_FILES)
 
 
 @router.post("/api/ingest")
-async def ingest_files(
+async def ingest_json(
+    req: IngestRequest,
+    _: None = Depends(_verify_api_key),
+):
+    """Accept markdown files as JSON and index them into the vector store."""
+    if _ktem_app is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Kotaemon app not initialized yet"},
+        )
+
+    if not req.files:
+        return JSONResponse(status_code=400, content={"error": "No files provided"})
+
+    try:
+        doc_name = _safe_name(req.doc_name)
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid doc_name"})
+
+    target_dir = UPLOAD_DIR / doc_name
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    written_files = []
+    try:
+        for f in req.files:
+            try:
+                safe_fname = _safe_name(f.name)
+            except ValueError:
+                logger.warning("Skipping file with invalid name: %s", f.name)
+                continue
+            file_path = target_dir / safe_fname
+            file_path.write_text(f.content, encoding="utf-8")
+            written_files.append(str(file_path))
+
+        result = _index_files(written_files)
+
+        return {
+            "status": "ok",
+            "message": f"{len(written_files)} files received, {result['indexed']} indexed",
+            "indexed": result["indexed"],
+            "total_files": len(written_files),
+            **({"index_errors": result["index_errors"]} if result["index_errors"] else {}),
+        }
+
+    except Exception:
+        logger.exception("Unexpected error during ingest")
+        return JSONResponse(
+            status_code=500, content={"error": "Internal server error"}
+        )
+
+
+# --- Ingest upload endpoint (ZIP file) ---
+
+
+@router.post("/api/ingest/upload")
+async def ingest_upload(
     file: UploadFile = File(...),
     _: None = Depends(_verify_api_key),
 ):
-    """Accept a ZIP of markdown files and extract them for Kotaemon indexing."""
+    """Accept a ZIP of files, extract, and index into the vector store."""
+    if _ktem_app is None:
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Kotaemon app not initialized yet"},
+        )
+
     if not file.filename or not file.filename.endswith(".zip"):
         return JSONResponse(
-            status_code=400,
-            content={"error": "Only ZIP files are accepted"},
+            status_code=400, content={"error": "Only ZIP files are accepted"}
         )
 
     try:
-        doc_name = _safe_doc_name(file.filename)
-    except ValueError:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Invalid filename"},
+        doc_name = _safe_name(
+            file.filename.replace("_sections.zip", "").replace(".zip", "")
         )
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid filename"})
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     target_dir = UPLOAD_DIR / doc_name
-
     tmp_path = None
+
     try:
         content = await file.read()
         if len(content) > MAX_UPLOAD_SIZE:
@@ -117,8 +202,6 @@ async def ingest_files(
         target_dir.mkdir(parents=True, exist_ok=True)
 
         with zipfile.ZipFile(tmp_path, "r") as zf:
-            # Guard against zip-slip: reject any member whose resolved path
-            # would escape target_dir.
             resolved_target = target_dir.resolve()
             total_size = 0
             for member in zf.infolist():
@@ -128,7 +211,6 @@ async def ingest_files(
                         status_code=400,
                         content={"error": "ZIP contains invalid path entries"},
                     )
-                # Guard against zip bombs.
                 total_size += member.file_size
                 if total_size > MAX_EXTRACT_SIZE:
                     return JSONResponse(
@@ -137,50 +219,21 @@ async def ingest_files(
                     )
             zf.extractall(target_dir)
 
-        extracted_files = list(target_dir.rglob("*.md"))
+        extracted_files = [str(f) for f in target_dir.rglob("*") if f.is_file()]
+        result = _index_files(extracted_files)
 
-        # Index extracted files into the vector store
-        indexed_count = 0
-        index_errors = []
-        if _ktem_app and extracted_files:
-            try:
-                index = _ktem_app.index_manager.indices[0]
-                settings = _ktem_app.default_settings.flatten()
-                indexing_pipeline = index.get_indexing_pipeline(settings, user_id=1)
-
-                file_paths = [str(f) for f in extracted_files]
-                for response in indexing_pipeline.stream(
-                    file_paths, reindex=False
-                ):
-                    if hasattr(response, "content") and isinstance(
-                        response.content, dict
-                    ):
-                        status = response.content.get("status")
-                        fname = response.content.get("file_name", "")
-                        if status == "success":
-                            indexed_count += 1
-                        elif status == "failed":
-                            msg = response.content.get("message", "unknown")
-                            index_errors.append(f"{fname}: {msg}")
-                            logger.warning("Index failed for %s: %s", fname, msg)
-            except Exception:
-                logger.exception("Error during indexing pipeline")
-                index_errors.append("Indexing pipeline error (see server logs)")
-
-        result = {
+        return {
             "status": "ok",
-            "message": f"{len(extracted_files)} files extracted, {indexed_count} indexed",
-            "directory": str(target_dir),
-            "files": [f.name for f in extracted_files],
-            "indexed": indexed_count,
+            "message": f"{len(extracted_files)} files extracted, {result['indexed']} indexed",
+            "indexed": result["indexed"],
+            "total_files": len(extracted_files),
+            **({"index_errors": result["index_errors"]} if result["index_errors"] else {}),
         }
-        if index_errors:
-            result["index_errors"] = index_errors
-        return result
+
     except zipfile.BadZipFile:
         return JSONResponse(status_code=400, content={"error": "Invalid ZIP file"})
     except Exception:
-        logger.exception("Unexpected error during ingest")
+        logger.exception("Unexpected error during ingest upload")
         return JSONResponse(
             status_code=500, content={"error": "Internal server error"}
         )
@@ -238,19 +291,14 @@ async def chat(
         from ktem.components import reasonings
         from kotaemon.base import Document
 
-        # Get default settings
         settings = _ktem_app.default_settings.flatten()
 
-        # Get the default reasoning class
         reasoning_mode = settings.get("reasoning.use", "simple")
         if reasoning_mode not in reasonings:
             reasoning_mode = list(reasonings.keys())[0]
         reasoning_cls = reasonings[reasoning_mode]
         reasoning_id = reasoning_cls.get_info()["id"]
 
-        # Get all retrievers from all indices (search all indexed docs)
-        # selected format: [mode, selected_ids, user_id]
-        #   mode="all" searches all files, user_id=1 is the admin user
         retrievers = []
         for index in _ktem_app.index_manager.indices:
             iretrievers = index.get_retriever_pipelines(
@@ -258,11 +306,9 @@ async def chat(
             )
             retrievers += iretrievers
 
-        # Create the pipeline
         state = {"app": {}, reasoning_id: {}}
         pipeline = reasoning_cls.get_pipeline(settings, state, retrievers)
 
-        # Run the pipeline
         history = req.history or []
         text = ""
         refs = ""
