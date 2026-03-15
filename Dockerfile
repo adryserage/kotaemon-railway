@@ -3,7 +3,9 @@ FROM ghcr.io/cinnamon/kotaemon:main-full
 # Bump google-api-core for latest API support (gemini-embedding-2-preview etc.)
 # Other Google packages (generativeai, ai-generativelanguage, langchain-google-genai)
 # are tightly cross-pinned in the base image and cannot be upgraded individually.
-RUN pip install --no-cache-dir --upgrade "google-api-core>=2.24,<3.0"
+RUN pip install --no-cache-dir --upgrade \
+    "google-api-core>=2.24,<3.0" \
+    "protobuf>=4.25.8,<5.0"
 
 # Override launch.sh to skip Ollama (not needed — we use external LLM APIs)
 COPY launch.sh /app/launch.sh
