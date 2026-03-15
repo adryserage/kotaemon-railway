@@ -2,6 +2,9 @@
 Wrapper around Kotaemon's app.py that adds REST API endpoints.
 Replaces `python app.py` in launch.sh.
 
+Uses gr.mount_gradio_app() — the official Gradio 4.x pattern for
+combining FastAPI routes with a Gradio UI.
+
 Endpoints added:
 - POST /api/ingest  — accept ZIP of markdown files
 - POST /api/chat    — query the RAG pipeline
@@ -9,8 +12,10 @@ Endpoints added:
 """
 
 import os
-import time
 
+import gradio as gr
+import uvicorn
+from fastapi import FastAPI
 from theflow.settings import settings as flowsettings
 
 KH_APP_DATA_DIR = getattr(flowsettings, "KH_APP_DATA_DIR", ".")
@@ -24,43 +29,33 @@ from ktem.main import App  # noqa: E402
 from api_ingest import router as api_router, set_ktem_app  # noqa: E402
 
 # Create the kotaemon app
-app = App()
+ktem_app = App()
 
 # Share the app instance with the API so /api/chat can use the RAG pipeline
-set_ktem_app(app)
+set_ktem_app(ktem_app)
 
-# Build and launch the Gradio UI
-demo = app.make()
+# Build the Gradio UI
+demo = ktem_app.make()
 demo.queue()
 
-demo.launch(
-    favicon_path=app._favicon,
-    inbrowser=False,
+# Create FastAPI app with API routes
+fastapi_app = FastAPI()
+fastapi_app.include_router(api_router)
+
+# Mount Gradio onto FastAPI at root
+gr.mount_gradio_app(
+    fastapi_app,
+    demo,
+    path="/",
     allowed_paths=[
         "libs/ktem/ktem/assets",
         GRADIO_TEMP_DIR,
     ],
-    share=KH_GRADIO_SHARE,
-    prevent_thread_lock=True,
 )
 
-# Mount the REST API onto Gradio's FastAPI server
-fastapi_app = None
-if hasattr(demo, "app"):
-    fastapi_app = demo.app
-elif hasattr(demo.server, "app"):
-    fastapi_app = demo.server.app
-elif hasattr(demo, "server") and hasattr(demo.server, "running_app"):
-    fastapi_app = demo.server.running_app
+print("API endpoints mounted: /api/ingest, /api/chat, /api/health")
 
-if fastapi_app:
-    fastapi_app.include_router(api_router)
-    print("API endpoints mounted: /api/ingest, /api/chat, /api/health")
-else:
-    print("WARNING: Could not mount API endpoints — Gradio FastAPI app not found")
-
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    pass
+# Run with uvicorn
+host = os.environ.get("GRADIO_SERVER_NAME", "0.0.0.0")
+port = int(os.environ.get("GRADIO_SERVER_PORT", "7860"))
+uvicorn.run(fastapi_app, host=host, port=port)
