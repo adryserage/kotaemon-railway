@@ -8,6 +8,9 @@ export GRADIO_SERVER_NAME
 export GRADIO_SERVER_PORT
 export GR_FILE_ROOT_PATH="/app"
 
+# Ensure data directories are writable (Railway volumes may override permissions)
+chmod -R 777 /app/ktem_app_data 2>/dev/null || true
+
 if [ "$KH_DEMO_MODE" = "true" ]; then
     KH_FEATURE_USER_MANAGEMENT=false USE_LIGHTRAG=false \
     uvicorn sso_app_demo:app \
