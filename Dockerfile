@@ -18,11 +18,6 @@ RUN cat /app/patch_flowsettings.py >> /app/flowsettings.py
 COPY api_ingest.py /app/api_ingest.py
 COPY app_with_api.py /app/app_with_api.py
 
-# Run as non-root user for security
-RUN useradd -m appuser \
-    && chown -R appuser:appuser /app
-USER appuser
-
 EXPOSE 7860
 
 ENTRYPOINT ["bash", "/app/launch.sh"]
