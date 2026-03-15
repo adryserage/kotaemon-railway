@@ -139,12 +139,44 @@ async def ingest_files(
 
         extracted_files = list(target_dir.rglob("*.md"))
 
-        return {
+        # Index extracted files into the vector store
+        indexed_count = 0
+        index_errors = []
+        if _ktem_app and extracted_files:
+            try:
+                index = _ktem_app.index_manager.indices[0]
+                settings = _ktem_app.default_settings.flatten()
+                indexing_pipeline = index.get_indexing_pipeline(settings, user_id=1)
+
+                file_paths = [str(f) for f in extracted_files]
+                for response in indexing_pipeline.stream(
+                    file_paths, reindex=False
+                ):
+                    if hasattr(response, "content") and isinstance(
+                        response.content, dict
+                    ):
+                        status = response.content.get("status")
+                        fname = response.content.get("file_name", "")
+                        if status == "success":
+                            indexed_count += 1
+                        elif status == "failed":
+                            msg = response.content.get("message", "unknown")
+                            index_errors.append(f"{fname}: {msg}")
+                            logger.warning("Index failed for %s: %s", fname, msg)
+            except Exception:
+                logger.exception("Error during indexing pipeline")
+                index_errors.append("Indexing pipeline error (see server logs)")
+
+        result = {
             "status": "ok",
-            "message": f"{len(extracted_files)} files extracted",
+            "message": f"{len(extracted_files)} files extracted, {indexed_count} indexed",
             "directory": str(target_dir),
             "files": [f.name for f in extracted_files],
+            "indexed": indexed_count,
         }
+        if index_errors:
+            result["index_errors"] = index_errors
+        return result
     except zipfile.BadZipFile:
         return JSONResponse(status_code=400, content={"error": "Invalid ZIP file"})
     except Exception:
