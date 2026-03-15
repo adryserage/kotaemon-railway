@@ -5,6 +5,7 @@ REST API endpoints for devis-preprocessor integration.
 - /api/health: Health check
 """
 
+import hmac
 import logging
 import os
 import re
@@ -53,8 +54,9 @@ def set_ktem_app(app):
 
 async def _verify_api_key(x_api_key: Optional[str] = Header(None)):
     """Dependency that enforces API key auth when API_SECRET_KEY is configured."""
-    if _API_SECRET_KEY and x_api_key != _API_SECRET_KEY:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    if _API_SECRET_KEY:
+        if not x_api_key or not hmac.compare_digest(x_api_key, _API_SECRET_KEY):
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 def _safe_doc_name(filename: str) -> str:
@@ -67,8 +69,8 @@ def _safe_doc_name(filename: str) -> str:
     # Keep only the final component to prevent path traversal.
     base = Path(filename).name
     base = base.replace("_sections.zip", "").replace(".zip", "")
-    sanitized = re.sub(r"[^\w\-.]", "_", base)
-    if not sanitized:
+    sanitized = re.sub(r"[^\w\-.]", "_", base).strip(".")
+    if not sanitized or sanitized == "..":
         raise ValueError(f"Cannot derive a safe directory name from: {filename!r}")
     return sanitized
 

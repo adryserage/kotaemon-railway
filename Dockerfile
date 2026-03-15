@@ -12,9 +12,12 @@ RUN cat /app/patch_flowsettings.py >> /app/flowsettings.py
 COPY api_ingest.py /app/api_ingest.py
 COPY app_with_api.py /app/app_with_api.py
 
+RUN useradd -m -s /bin/bash appuser && chown -R appuser:appuser /app
+
 EXPOSE 7860
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:7860/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-7860}/api/health || exit 1
 
+USER appuser
 ENTRYPOINT ["bash", "/app/launch.sh"]
