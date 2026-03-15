@@ -19,6 +19,6 @@ elif [ "$KH_SSO_ENABLED" = "true" ]; then
         --host "$GRADIO_SERVER_NAME" \
         --port "$GRADIO_SERVER_PORT"
 else
-    # Railway mode: skip Ollama (use external LLM APIs instead)
-    python app.py
+    # Railway mode: skip Ollama, add /api/ingest endpoint
+    python app_with_api.py
 fi
