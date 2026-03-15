@@ -5,6 +5,10 @@
 # Requis :
 #   GOOGLE_API_KEY            - Clé API Google (Gemini + Embeddings)
 #
+# Recommandé :
+#   API_SECRET_KEY            - Clé secrète pour protéger /api/ingest et /api/chat
+#                               (header X-Api-Key requis si définie)
+#
 # Optionnel (override modèles) :
 #   GOOGLE_CHAT_MODEL         - Défaut : gemini-1.5-flash
 #   GOOGLE_EMBEDDINGS_MODEL   - Défaut : models/text-embedding-004
