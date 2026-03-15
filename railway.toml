@@ -1,3 +1,21 @@
+# === Kotaemon sur Railway ===
+#
+# Variables d'environnement à configurer dans le dashboard Railway :
+#
+# Requis :
+#   GOOGLE_API_KEY            - Clé API Google (Gemini + Embeddings)
+#
+# Optionnel (override modèles) :
+#   GOOGLE_CHAT_MODEL         - Défaut : gemini-1.5-flash
+#   GOOGLE_EMBEDDINGS_MODEL   - Défaut : models/text-embedding-004
+#
+# Optionnel (autres providers) :
+#   OPENAI_API_KEY            - Si défini, OpenAI devient le provider par défaut
+#   OPENAI_API_BASE           - Défaut : https://api.openai.com/v1
+#   AZURE_OPENAI_ENDPOINT     - Endpoint Azure OpenAI
+#   AZURE_OPENAI_API_KEY      - Clé API Azure
+#   ANTHROPIC_API_KEY         - Clé API Anthropic (Claude)
+
 [build]
 dockerfilePath = "Dockerfile"
 
