@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,15 @@ UPLOAD_DIR = Path(
 
 # Maximum total size of extracted ZIP contents (100 MB)
 MAX_EXTRACT_SIZE = 100 * 1024 * 1024
+
+# Maximum size of the uploaded compressed ZIP file (150 MB)
+MAX_UPLOAD_SIZE = 150 * 1024 * 1024
+
+# Maximum length of a single chat message / question (characters)
+MAX_MESSAGE_LENGTH = 10_000
+
+# Maximum number of history turns accepted in a chat request
+MAX_HISTORY_TURNS = 50
 
 # Optional API key for protecting ingest and chat endpoints.
 # Set API_SECRET_KEY env var to enable authentication.
@@ -92,8 +101,14 @@ async def ingest_files(
 
     tmp_path = None
     try:
+        content = await file.read()
+        if len(content) > MAX_UPLOAD_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"error": "Uploaded file exceeds maximum allowed size"},
+            )
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
 
@@ -147,9 +162,24 @@ async def ingest_files(
 
 
 class ChatRequest(BaseModel):
-    question: str = Field(..., max_length=10_000)
+    question: str = Field(..., max_length=MAX_MESSAGE_LENGTH)
     conversation_id: Optional[str] = Field(None, max_length=200)
-    history: Optional[list[list[str]]] = None
+    history: Optional[list[list[str]]] = Field(None, max_length=MAX_HISTORY_TURNS)
+
+    @field_validator("history")
+    @classmethod
+    def validate_history(cls, v):
+        if v is None:
+            return v
+        for pair in v:
+            if len(pair) != 2:
+                raise ValueError("Each history entry must be [question, answer]")
+            for msg in pair:
+                if not isinstance(msg, str) or len(msg) > MAX_MESSAGE_LENGTH:
+                    raise ValueError(
+                        f"History messages must be strings ≤ {MAX_MESSAGE_LENGTH:,} chars"
+                    )
+        return v
 
 
 class ChatResponse(BaseModel):

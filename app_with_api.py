@@ -11,12 +11,15 @@ Endpoints added:
 - GET  /api/health  — health check
 """
 
+import logging
 import os
 
 import gradio as gr
 import uvicorn
 from fastapi import FastAPI
 from theflow.settings import settings as flowsettings
+
+logger = logging.getLogger(__name__)
 
 KH_APP_DATA_DIR = getattr(flowsettings, "KH_APP_DATA_DIR", ".")
 KH_GRADIO_SHARE = getattr(flowsettings, "KH_GRADIO_SHARE", False)
@@ -25,18 +28,20 @@ if GRADIO_TEMP_DIR is None:
     GRADIO_TEMP_DIR = os.path.join(KH_APP_DATA_DIR, "gradio_tmp")
     os.environ["GRADIO_TEMP_DIR"] = GRADIO_TEMP_DIR
 
+os.makedirs(GRADIO_TEMP_DIR, exist_ok=True)
+
 from ktem.main import App  # noqa: E402
 from api_ingest import router as api_router, set_ktem_app  # noqa: E402
 
 # Create the kotaemon app
-ktem_app = App()
-
-# Share the app instance with the API so /api/chat can use the RAG pipeline
-set_ktem_app(ktem_app)
-
-# Build the Gradio UI
-demo = ktem_app.make()
-demo.queue()
+try:
+    ktem_app = App()
+    set_ktem_app(ktem_app)
+    demo = ktem_app.make()
+    demo.queue()
+except Exception:
+    logger.exception("Failed to initialise Kotaemon app — aborting startup")
+    raise
 
 # Create FastAPI app with API routes
 fastapi_app = FastAPI()
