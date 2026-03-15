@@ -98,10 +98,7 @@ async def chat(req: ChatRequest):
         )
 
     try:
-        from copy import deepcopy
-
-        from ktem.pages.chat import ChatPage
-        from ktem.reasoning import reasonings
+        from ktem.components import reasonings
         from kotaemon.base import Document
 
         # Get default settings
