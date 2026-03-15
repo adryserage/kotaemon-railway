@@ -45,9 +45,19 @@ demo.launch(
 )
 
 # Mount the REST API onto Gradio's FastAPI server
-demo.server.app.include_router(api_router)
+fastapi_app = None
+if hasattr(demo, "app"):
+    fastapi_app = demo.app
+elif hasattr(demo.server, "app"):
+    fastapi_app = demo.server.app
+elif hasattr(demo, "server") and hasattr(demo.server, "running_app"):
+    fastapi_app = demo.server.running_app
 
-print("API endpoints mounted: /api/ingest, /api/chat, /api/health")
+if fastapi_app:
+    fastapi_app.include_router(api_router)
+    print("API endpoints mounted: /api/ingest, /api/chat, /api/health")
+else:
+    print("WARNING: Could not mount API endpoints — Gradio FastAPI app not found")
 
 try:
     while True:
