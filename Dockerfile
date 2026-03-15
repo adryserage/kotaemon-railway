@@ -1,9 +1,5 @@
 FROM ghcr.io/cinnamon/kotaemon:main-full
 
-# Install Nano-GraphRAG, then restore hnswlib compatible with chromadb
-RUN pip install --no-cache-dir nano-graphrag \
-    && pip install --no-cache-dir --force-reinstall hnswlib
-
 # Override launch.sh to skip Ollama (not needed — we use external LLM APIs)
 COPY launch.sh /app/launch.sh
 RUN chmod +x /app/launch.sh

@@ -10,7 +10,7 @@
 #   GOOGLE_EMBEDDINGS_MODEL   - Défaut : models/text-embedding-004
 #
 # GraphRAG :
-#   USE_NANO_GRAPHRAG         - Défaut : true (installé dans l'image)
+#   USE_NANO_GRAPHRAG         - Défaut : false (désactivé, conflits de deps)
 #   USE_LIGHTRAG              - Défaut : true
 #   USE_MS_GRAPHRAG           - Défaut : true
 #
