@@ -1,0 +1,5 @@
+.env
+ktem_app_data/
+__pycache__/
+*.pyc
+.DS_Store
