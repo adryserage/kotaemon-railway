@@ -1,5 +1,13 @@
 FROM ghcr.io/cinnamon/kotaemon:main-full
 
+# Upgrade key packages to latest versions (support gemini-embedding-2-preview etc.)
+RUN pip install --no-cache-dir --upgrade \
+    langchain-google-genai \
+    google-generativeai \
+    google-genai \
+    google-ai-generativelanguage \
+    google-api-core
+
 # Override launch.sh to skip Ollama (not needed — we use external LLM APIs)
 COPY launch.sh /app/launch.sh
 RUN chmod +x /app/launch.sh
