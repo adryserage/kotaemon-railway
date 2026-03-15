@@ -9,6 +9,11 @@
 #   GOOGLE_CHAT_MODEL         - Défaut : gemini-1.5-flash
 #   GOOGLE_EMBEDDINGS_MODEL   - Défaut : models/text-embedding-004
 #
+# GraphRAG :
+#   USE_NANO_GRAPHRAG         - Défaut : true (installé dans l'image)
+#   USE_LIGHTRAG              - Défaut : true
+#   USE_MS_GRAPHRAG           - Défaut : true
+#
 # Optionnel (autres providers) :
 #   OPENAI_API_KEY            - Si défini, OpenAI devient le provider par défaut
 #   OPENAI_API_BASE           - Défaut : https://api.openai.com/v1

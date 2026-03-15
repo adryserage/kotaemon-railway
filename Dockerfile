@@ -1,5 +1,8 @@
 FROM ghcr.io/cinnamon/kotaemon:main-full
 
+# Install Nano-GraphRAG
+RUN pip install --no-cache-dir nano-graphrag
+
 # Override launch.sh to skip Ollama (not needed — we use external LLM APIs)
 COPY launch.sh /app/launch.sh
 RUN chmod +x /app/launch.sh
